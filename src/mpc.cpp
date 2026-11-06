@@ -262,6 +262,7 @@ tl::expected<JointTrajectory, std::string> MPC::solve(const JointConfiguration& 
       auto guess = repeat(x0, N + 1);
       guess.resize(guess.size() + nu_ * N, 0.0);
       args_["x0"] = guess;
+      // No multipliers from a previous solution (they start at zero).
       args_.erase("lam_x0");
       args_.erase("lam_g0");
     }
@@ -292,6 +293,9 @@ tl::expected<JointTrajectory, std::string> MPC::solve(const JointConfiguration& 
     return tl::make_unexpected(error);
   }
   const std::vector<double> opt = sol.at("x").nonzeros();
+  // Warm start the next solve from this solution: x0 is the initial guess of [X; U], and
+  // lam_x0 / lam_g0 (CasADi's names) are the Lagrange multipliers of the bounds (lbx, ubx) and
+  // of the constraints g (dynamics, torques), i.e. which limits are active.
   args_["x0"] = sol.at("x");
   args_["lam_x0"] = sol.at("lam_x");
   args_["lam_g0"] = sol.at("lam_g");
