@@ -1,0 +1,6 @@
+build/
+.pixi/
+__pycache__/
+.pytest_cache/
+docs/html/
+docs/xml/

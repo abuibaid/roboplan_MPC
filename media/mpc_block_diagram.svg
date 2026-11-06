@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1220 770" width="1220" height="770" font-family="DejaVu Sans, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#444"/>
+    </marker>
+    <style>
+      .box { fill: #ffffff; stroke: #555; stroke-width: 1.5; }
+      .core { fill: #eef4fb; stroke: #3a6ea5; }
+      .mpc { fill: #f2f8ee; stroke: #4c8a3a; }
+      .ext { fill: #f7f7f7; stroke: #999; stroke-dasharray: 6 4; }
+      .title { font-size: 17px; font-weight: bold; fill: #222; }
+      .text { font-size: 13.5px; fill: #333; }
+      .mono { font-size: 13px; fill: #333; font-family: DejaVu Sans Mono, Menlo, monospace; }
+      .label { font-size: 12.5px; fill: #555; font-style: italic; }
+      .edge { stroke: #444; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+      .group { fill: none; stroke: #4c8a3a; stroke-width: 1.5; }
+    </style>
+  </defs>
+
+  <text x="610" y="34" text-anchor="middle" font-size="22" font-weight="bold" fill="#222">roboplan_mpc: data flow and code structure</text>
+
+  <!-- Inputs: Scene, Cartesian target, OInK -->
+  <rect class="box core" x="40" y="70" width="300" height="120" rx="8"/>
+  <text class="title" x="56" y="98">roboplan::Scene</text>
+  <text class="text" x="56" y="122">URDF + SRDF + joint limits (YAML)</text>
+  <text class="text" x="56" y="144">Pinocchio model (inertias, effort)</text>
+  <text class="text" x="56" y="166">position / velocity / acceleration limits</text>
+
+  <rect class="box" x="40" y="250" width="300" height="70" rx="8"/>
+  <text class="title" x="56" y="278">Cartesian target</text>
+  <text class="text" x="56" y="302">end-effector pose(s), e.g. from a user</text>
+
+  <rect class="box core" x="40" y="380" width="300" height="100" rx="8"/>
+  <text class="title" x="56" y="408">OInK (roboplan_oink)</text>
+  <text class="mono" x="56" y="432">solveIterativeIk(...)</text>
+  <text class="text" x="56" y="456">once per target → joint goal q_d</text>
+
+  <!-- roboplan::Mpc -->
+  <rect class="group" x="400" y="70" width="460" height="580" rx="12"/>
+  <text class="title" x="416" y="98" fill="#2f6b22">roboplan::Mpc  (C++, Python via nanobind)</text>
+
+  <rect class="box mpc" x="420" y="115" width="420" height="215" rx="8"/>
+  <text class="title" x="436" y="141">Mpc(scene, MpcOptions) → setupMpc()</text>
+  <text class="text" x="436" y="166">x = [q; dq],  u = ddq  (double integrator)</text>
+  <text class="mono" x="436" y="190">x_k+1 = Ad x_k + Bd u_k</text>
+  <text class="text" x="436" y="214">tau = RNEA(q, dq, ddq)  (Pinocchio on CasADi)</text>
+  <text class="text" x="436" y="238">multiple shooting: X, U, P = [x0; x_d; u_prev]</text>
+  <text class="text" x="436" y="262">cost Q, R, Rd (on Δu), Qf;  bounds lbx/ubx, lbu/ubu</text>
+  <text class="text" x="436" y="286">g: dynamics (= 0), torque limits (|tau| ≤ tau_max)</text>
+  <text class="text" x="436" y="314" fill="#2f6b22">built once at runtime from the Scene, for any robot</text>
+
+  <rect class="box mpc" x="420" y="350" width="420" height="105" rx="8"/>
+  <text class="title" x="436" y="376">CasADi nlpsol</text>
+  <text class="text" x="436" y="400">"sqpmethod" (default): 1 SQP iteration per call,</text>
+  <text class="text" x="436" y="421">OSQP, Gauss-Newton Hessian, warm start (~2 ms)</text>
+  <text class="text" x="436" y="442">"ipopt": solve to convergence (~45 ms)</text>
+
+  <rect class="box mpc" x="420" y="475" width="200" height="70" rx="8"/>
+  <text class="title" x="436" y="503">setGoal(q_d)</text>
+  <text class="text" x="436" y="527">desired joint state</text>
+
+  <rect class="box mpc" x="640" y="475" width="200" height="155" rx="8"/>
+  <text class="title" x="656" y="503">solve(q, dq)</text>
+  <text class="text" x="656" y="527">p = [x0; x_d; u_prev]</text>
+  <text class="text" x="656" y="549">warm start, solve</text>
+  <text class="text" x="656" y="571">check x̂_0 = x0</text>
+  <text class="text" x="656" y="593">→ JointTrajectory</text>
+  <text class="text" x="656" y="615">x̂_0 … x̂_N (N = 15)</text>
+
+  <!-- Execution side -->
+  <rect class="box ext" x="910" y="250" width="295" height="120" rx="8"/>
+  <text class="title" x="926" y="278">Execution (outside roboplan)</text>
+  <text class="text" x="926" y="302">ROS 2 node → JTC (roboplan-ros)</text>
+  <text class="text" x="926" y="324">in the example: simulated,</text>
+  <text class="text" x="926" y="346">the robot is at x̂_1 next cycle</text>
+
+  <rect class="box ext" x="910" y="475" width="295" height="90" rx="8"/>
+  <text class="title" x="926" y="503">Robot</text>
+  <text class="text" x="926" y="527">real or simulated;</text>
+  <text class="text" x="926" y="549">measured q, dq</text>
+
+  <!-- Edges -->
+  <path class="edge" d="M340,180 L380,180 L380,200 L418,200"/>
+  <text class="label" x="300" y="208">limits, model</text>
+  <path class="edge" d="M40,130 L20,130 L20,430 L38,430"/>
+  <path class="edge" d="M190,320 L190,378"/>
+  <path class="edge" d="M340,430 Q380,430 380,480 L418,505"/>
+  <text class="label" x="350" y="470">q_d</text>
+  <path class="edge" d="M630,330 L630,348"/>
+  <path class="edge" d="M740,455 L740,473"/>
+  <path class="edge" d="M520,545 L520,590 L638,590"/>
+  <path class="edge" d="M840,530 L878,530 L878,310 L908,310"/>
+  <text class="label" x="848" y="226">predicted</text>
+  <text class="label" x="848" y="242">trajectory</text>
+  <path class="edge" d="M1057,370 L1057,473"/>
+  <text class="label" x="1064" y="428">commands</text>
+  <path class="edge" d="M1057,565 L1057,710 L740,710 L740,632"/>
+  <text class="label" x="770" y="735">measured state every Ts = 0.1 s (closed loop)</text>
+</svg>

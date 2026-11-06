@@ -1,0 +1,36 @@
+[workspace]
+name = "roboplan_mpc"
+description = "Model predictive control (MPC) built on RoboPlan, Pinocchio, and CasADi"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+# RoboPlan, released on conda-forge: C++ libraries and Python packages
+libroboplan-core = "0.8.*"
+libroboplan-example-models = "0.8.*"
+roboplan-core-python = "0.8.*"
+roboplan-example-models-python = "0.8.*"
+roboplan-oink-python = "0.8.*"
+# Pinocchio with its CasADi support (pinocchio::pinocchio_casadi)
+pinocchio = ">=4.1"
+casadi = "*"
+# Build and test
+cmake = "*"
+ninja = "*"
+cxx-compiler = "*"
+nanobind = "*"
+python = "3.14.*"
+gtest = "*"
+pytest = "*"
+# Example
+numpy = "*"
+matplotlib = "*"
+viser = "*"
+tyro = "*"
+xacro = "*"
+
+[tasks]
+configure = "cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$CONDA_PREFIX -DGENERATE_PYTHON_STUBS=OFF"
+build = { cmd = "cmake --build build && cmake --install build", depends-on = ["configure"] }
+test = { cmd = "ctest --test-dir build --output-on-failure && python -m pytest -q bindings/test", depends-on = ["build"] }
+example = { cmd = "python examples/example_mpc.py", depends-on = ["build"] }
