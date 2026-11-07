@@ -24,6 +24,8 @@ pixi run test       # C++ and Python tests
 pixi run example    # browser viewer at http://localhost:8080 (--model ur5|franka|dual|so101)
 ```
 
+The example is in [roboplan_mpc_examples/python/example_mpc.py](roboplan_mpc_examples/python/example_mpc.py), in the same layout as RoboPlan's `roboplan_examples`.
+
 ## Usage
 
 ```python

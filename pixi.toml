@@ -33,4 +33,4 @@ xacro = "*"
 configure = "cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$CONDA_PREFIX -DGENERATE_PYTHON_STUBS=OFF"
 build = { cmd = "cmake --build build && cmake --install build", depends-on = ["configure"] }
 test = { cmd = "ctest --test-dir build --output-on-failure && python -m pytest -q bindings/test", depends-on = ["build"] }
-example = { cmd = "python examples/example_mpc.py", depends-on = ["build"] }
+example = { cmd = "python roboplan_mpc_examples/python/example_mpc.py", depends-on = ["build"] }
