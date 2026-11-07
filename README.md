@@ -35,3 +35,29 @@ trajectory = mpc.solve(state)  # JointTrajectory over the horizon, starting at t
 ```
 
 The same API is available in C++ (`roboplan::MPC`, `roboplan::MPCOptions`).
+
+## Roadmap
+
+### Done
+
+- [x] Joint-space MPC in C++ with Python bindings: tracks a joint goal within the joint position, velocity, acceleration, and torque limits of a RoboPlan `Scene`.
+- [x] Pinocchio as part of the MPC: inverse dynamics (RNEA) gives the torque of each planned acceleration, kept within the motor limits.
+- [x] CasADi formulation (multiple shooting), solved with one warm-started SQP iteration per cycle (OSQP) or with IPOPT.
+- [x] Robust solves: unbounded initial state, and a cold-start retry when a warm-started solve fails.
+- [x] Cartesian targets through OInK (once per target), and a browser example on the UR5, Franka FR3, dual Franka FR3, and SO-101.
+- [x] C++ and Python tests.
+
+### Next
+
+1. **Collision avoidance.** Self-collision and static obstacles as distance constraints, with the robot links modelled as capsules (line segments), following [KoKoBot](https://github.com/ngafur/MPC_MultiRobot_Motion_Planning). The geometry comes from the RoboPlan `Scene`.
+2. **Moving obstacles.** Predicted obstacle motion over the horizon as time-varying constraints, set at every cycle.
+3. **Multiple robots.** Distributed MPC for robots sharing a workspace, where each robot plans with its neighbours' predicted trajectories, as in KoKoBot.
+4. **ROS 2 integration.** A node that sends the predicted trajectory to a `joint_trajectory_controller`, tested in simulation and on a real UR5e.
+
+## References
+
+- **RoboPlan**: modern robot motion planning library, which this MPC builds on (scene, limits, OInK, example models). [github.com/open-planning/roboplan](https://github.com/open-planning/roboplan), [documentation](https://roboplan.readthedocs.io). Discussion of this MPC with the RoboPlan maintainers: [open-planning/roboplan#399](https://github.com/open-planning/roboplan/issues/399).
+- **KoKoBot**: online motion control for a multi-robot system based on (distributed) model predictive control, by Nigora Gafur, RPTU Kaiserslautern-Landau. This MPC builds on its formulation, and its collision avoidance and multi-robot coordination are the next steps here. [github.com/ngafur/MPC_MultiRobot_Motion_Planning](https://github.com/ngafur/MPC_MultiRobot_Motion_Planning).
+- **Pinocchio**: rigid-body dynamics, used for the inverse dynamics of the MPC. [github.com/stack-of-tasks/pinocchio](https://github.com/stack-of-tasks/pinocchio).
+- **CasADi**: symbolic framework for the optimal control problem. [web.casadi.org](https://web.casadi.org).
+- **OSQP**: QP solver of the SQP iterations. [osqp.org](https://osqp.org).
