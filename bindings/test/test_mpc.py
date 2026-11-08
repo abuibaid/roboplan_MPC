@@ -65,6 +65,33 @@ def test_reaches_goal_within_limits(test_scene: Scene, solver: str) -> None:
     assert np.linalg.norm(state.velocities) < 1e-3
 
 
+def test_stays_above_table(test_scene: Scene) -> None:
+    # Without constraints, this goal moves the wrist below z = 0.
+    options = MPCOptions(
+        group_name=GROUP_NAME,
+        tip_frame="tool0",
+        environment_min=np.array([-np.inf, -np.inf, 0.0]),
+    )
+    controller = MPC(test_scene, options)
+    joint_names = test_scene.getJointGroupInfo(GROUP_NAME).joint_names
+    frames = joint_names[1:] + ["tool0"]
+
+    goal = JointConfiguration()
+    goal.positions = np.array([0.8, -0.6, 2.2, 0.0, 1.2, 0.4])
+    controller.setGoal(goal)
+
+    state = JointConfiguration()
+    state.positions = np.array([0.0, -1.57, 1.57, 0.0, 1.57, 0.0])
+    state.velocities = np.zeros(6)
+    for _ in range(60):
+        trajectory = controller.solve(state)
+        state.positions = trajectory.positions[1]
+        state.velocities = trajectory.velocities[1]
+        for frame in frames:
+            z = test_scene.forwardKinematics(state.positions, frame)[2, 3]
+            assert z >= options.d_sec - 1e-4
+
+
 def test_invalid_state(test_scene: Scene) -> None:
     controller = MPC(test_scene, MPCOptions(group_name=GROUP_NAME))
     state = JointConfiguration()

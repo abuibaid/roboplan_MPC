@@ -1,5 +1,6 @@
 #include <cmath>
 #include <gtest/gtest.h>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <vector>
@@ -132,6 +133,38 @@ TEST_F(RoboPlanMPCTest, RecoversFromStateJump) {
       state.velocities = trajectory->velocities[1];
     }
   }
+}
+
+TEST_F(RoboPlanMPCTest, StaysAboveTable) {
+  // A goal that moves the wrist below z = 0 without constraints. With a table at z = 0, the
+  // frames T2 ... T7 stay above it by the safety distance.
+  MPCOptions options = groupOptions();
+  options.tip_frame = "tool0";
+  options.environment_min[2] = 0.0;
+  MPC mpc(scene, options);
+  const auto joint_names = scene->getJointGroupInfo(kGroupName).value().joint_names;
+  std::vector<std::string> frames(joint_names.begin() + 1, joint_names.end());
+  frames.push_back("tool0");
+
+  JointConfiguration goal;
+  goal.positions = Eigen::VectorXd{{0.8, -0.6, 2.2, 0.0, 1.2, 0.4}};
+  mpc.setGoal(goal);
+
+  JointConfiguration state;
+  state.positions = Eigen::VectorXd{{0.0, -1.57, 1.57, 0.0, 1.57, 0.0}};
+  state.velocities = Eigen::VectorXd::Zero(6);
+  double z_min = std::numeric_limits<double>::infinity();
+  for (int i = 0; i < 60; ++i) {
+    const auto trajectory = mpc.solve(state);
+    ASSERT_TRUE(trajectory.has_value()) << trajectory.error();
+    state.positions = trajectory->positions[1];
+    state.velocities = trajectory->velocities[1];
+    for (const auto& frame : frames) {
+      z_min = std::min(z_min, scene->forwardKinematics(state.positions, frame)(2, 3));
+    }
+  }
+  EXPECT_GE(z_min, options.d_sec - 1e-4);
+  EXPECT_LT(z_min, options.d_sec + 1e-2);  // it reaches the table
 }
 
 TEST_F(RoboPlanMPCTest, UnknownSolver) {

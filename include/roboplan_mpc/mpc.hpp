@@ -45,6 +45,19 @@ struct MPCOptions {
   /// runtime, and takes seconds to minutes when constructing; most of the solve time is spent in
   /// IPOPT itself, so the speedup is small.
   bool jit = false;
+
+  /// @brief The tool frame, the end of the chain T1 ... T(n+1), e.g. "tool0". Required for the
+  /// environment constraints.
+  std::string tip_frame = "";
+
+  /// @brief Environment constraints: the lower and upper bounds [x; y; z] in the world frame on
+  /// the positions of the frames T2 ... T(n+1), e.g. environment_min[2] for a table.
+  /// Infinite bounds (the default) are not constrained.
+  Eigen::Vector3d environment_min = Eigen::Vector3d::Constant(-casadi::inf);
+  Eigen::Vector3d environment_max = Eigen::Vector3d::Constant(casadi::inf);
+
+  /// @brief The safety distance to the environment bounds, in meters.
+  double d_sec = 0.015;
 };
 
 /// @brief Joint-space model predictive control (MPC) for motion control.
@@ -80,6 +93,15 @@ public:
 private:
   /// @brief Formulates the optimal control problem and creates the solver.
   void setupMPCProblem();
+
+  /// @brief Formulates the environment constraints g <= 0 over the horizon.
+  /// @param X The states [q; dq] over the horizon.
+  std::vector<casadi::SX> environmentConstraints(const casadi::SX& X) const;
+
+  /// @brief Returns the options of the NLP solver.
+  /// @param nlp_prob The NLP problem {f, x, g, p}.
+  /// @throws std::runtime_error if the solver is unknown.
+  casadi::Dict solverOptions(const casadi::SXDict& nlp_prob) const;
 
   /// @brief A pointer to the scene.
   std::shared_ptr<Scene> scene_;

@@ -6,6 +6,7 @@
 #include <pinocchio/autodiff/casadi.hpp>
 
 #include <roboplan_mpc/mpc.hpp>
+#include <roboplan_mpc/robot_transformation.hpp>
 
 namespace roboplan {
 
@@ -150,11 +151,13 @@ void MPC::setupMPCProblem() {
   obj +=
       SX::mtimes({(x_desired - X(casadi::Slice(), N)).T(), Qf, x_desired - X(casadi::Slice(), N)});
   g.insert(g.end(), g_tau.begin(), g_tau.end());
+  const std::vector<SX> g_env = environmentConstraints(X);
+  g.insert(g.end(), g_env.begin(), g_env.end());
 
   const SX opt_var = SX::vertcat({SX::reshape(X, nx_ * (N + 1), 1), SX::reshape(U, nu_ * N, 1)});
   const casadi::SXDict nlp_prob = {{"f", obj}, {"x", opt_var}, {"g", SX::vertcat(g)}, {"p", P}};
 
-  // Equality constraints (dynamics) and inequality constraints (torques)
+  // Equality constraints (dynamics) and inequality constraints (torques, environment)
   std::vector<double> lbg(nx_ * (N + 1), 0.0);
   std::vector<double> ubg(nx_ * (N + 1), 0.0);
   for (casadi_int j = 0; j < N; ++j) {
@@ -163,6 +166,9 @@ void MPC::setupMPCProblem() {
       ubg.push_back(tau_max);
     }
   }
+  //  => -inf < g_env <= 0
+  lbg.insert(lbg.end(), g_env.size(), -casadi::inf);
+  ubg.insert(ubg.end(), g_env.size(), 0.0);
   args_["lbg"] = lbg;
   args_["ubg"] = ubg;
 
@@ -181,21 +187,26 @@ void MPC::setupMPCProblem() {
   args_["ubx"] = ubx;
 
   // ###### Solver ######
+  solver_ = casadi::nlpsol("solver", options_.solver, nlp_prob, solverOptions(nlp_prob));
+}
+
+casadi::Dict MPC::solverOptions(const casadi::SXDict& nlp_prob) const {
   if (options_.solver == "sqpmethod") {
     // One SQP iteration per control cycle (real-time iteration), warm started from the previous
     // solution. The Hessian is the one of the quadratic objective only (Gauss-Newton), ignoring
-    // the curvature of the torque constraints, which keeps every QP convex.
+    // the curvature of the constraints, which keeps every QP convex.
+    const SX& opt_var = nlp_prob.at("x");
     const SX lam_f = SX::sym("lam_f");
     const SX lam_g = SX::sym("lam_g", nlp_prob.at("g").size1());
-    const casadi::Function hess_lag("nlp_hess_l", {opt_var, P, lam_f, lam_g},
-                                    {lam_f * SX::hessian(obj, opt_var)},
+    const casadi::Function hess_lag("nlp_hess_l", {opt_var, nlp_prob.at("p"), lam_f, lam_g},
+                                    {lam_f * SX::hessian(nlp_prob.at("f"), opt_var)},
                                     {"x", "p", "lam_f", "lam_g"}, {"hess_gamma_x_x"});
     const casadi::Dict osqp_options = {{"verbose", false},
                                        {"eps_abs", 1e-5},
                                        {"eps_rel", 1e-5},
                                        {"max_iter", 4000},
                                        {"polish", false}};
-    const casadi::Dict options = {
+    return {
         {"qpsol", "osqp"},
         {"qpsol_options", casadi::Dict{{"osqp", osqp_options}, {"error_on_fail", false}}},
         {"hess_lag", hess_lag},
@@ -206,7 +217,6 @@ void MPC::setupMPCProblem() {
         {"print_status", false},
         {"error_on_fail", false},
         {"jit", options_.jit}};
-    solver_ = casadi::nlpsol("solver", "sqpmethod", nlp_prob, options);
   } else if (options_.solver == "ipopt") {
     const casadi::Dict ipopt_options = {{"max_iter", 1000},
                                         {"print_level", 0},
@@ -216,13 +226,41 @@ void MPC::setupMPCProblem() {
                                         {"linear_solver", "mumps"},
                                         {"warm_start_init_point", "yes"},
                                         {"fast_step_computation", "yes"}};
-    const casadi::Dict options = {
-        {"print_time", false}, {"jit", options_.jit}, {"ipopt", ipopt_options}};
-    solver_ = casadi::nlpsol("solver", "ipopt", nlp_prob, options);
-  } else {
-    throw std::runtime_error("Could not initialize MPC: unknown solver '" + options_.solver +
-                             "', expected 'sqpmethod' or 'ipopt'.");
+    return {{"print_time", false}, {"jit", options_.jit}, {"ipopt", ipopt_options}};
   }
+  throw std::runtime_error("Could not initialize MPC: unknown solver '" + options_.solver +
+                           "', expected 'sqpmethod' or 'ipopt'.");
+}
+
+std::vector<SX> MPC::environmentConstraints(const SX& X) const {
+  std::vector<SX> g;
+  const Eigen::Vector3d& lower = options_.environment_min;
+  const Eigen::Vector3d& upper = options_.environment_max;
+  if (!lower.array().isFinite().any() && !upper.array().isFinite().any()) {
+    return g;
+  }
+  const auto N = static_cast<casadi_int>(N_);
+  const auto n = nu_;
+  const RobotTransformation arm(scene_, options_.group_name, options_.tip_frame);
+
+  // The positions p of the frames T2 ... T(n+1) stay within the bounds, e.g. above the table:
+  //   -p_z + z_min + d_sec <= 0,  and below the camera:  p_z - z_max + d_sec <= 0.
+  // T1 is at the base. The initial state is the measured one, so the constraints start at k = 1.
+  for (casadi_int k = 1; k <= N; ++k) {
+    const auto rob = arm.robotTransformation(X(casadi::Slice(0, n), k));
+    for (casadi_int i = 2; i <= n + 1; ++i) {
+      const SX p = rob.at("T" + std::to_string(i))(casadi::Slice(0, 3), 3);
+      for (int axis = 0; axis < 3; ++axis) {
+        if (std::isfinite(lower[axis])) {
+          g.push_back(-p(axis) + lower[axis] + options_.d_sec);
+        }
+        if (std::isfinite(upper[axis])) {
+          g.push_back(p(axis) - upper[axis] + options_.d_sec);
+        }
+      }
+    }
+  }
+  return g;
 }
 
 void MPC::setGoal(const JointConfiguration& goal) {
@@ -295,7 +333,7 @@ tl::expected<JointTrajectory, std::string> MPC::solve(const JointConfiguration& 
   const std::vector<double> opt = sol.at("x").nonzeros();
   // Warm start the next solve from this solution: x0 is the initial guess of [X; U], and
   // lam_x0 / lam_g0 (CasADi's names) are the Lagrange multipliers of the bounds (lbx, ubx) and
-  // of the constraints g (dynamics, torques), i.e. which limits are active.
+  // of the constraints g (dynamics, torques, environment), i.e. which limits are active.
   args_["x0"] = sol.at("x");
   args_["lam_x0"] = sol.at("lam_x");
   args_["lam_g0"] = sol.at("lam_g");

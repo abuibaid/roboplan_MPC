@@ -22,6 +22,7 @@ Requires [pixi](https://pixi.sh). RoboPlan, Pinocchio, and CasADi come from cond
 pixi run build      # configure, build, and install into the pixi environment
 pixi run test       # C++ and Python tests
 pixi run example    # browser viewer at http://localhost:8080 (--model ur5|franka|dual|so101)
+pixi run example --z-min 0.0   # with a floor at z = 0 (environment constraints)
 ```
 
 The example is in [roboplan_mpc_examples/python/example_mpc.py](roboplan_mpc_examples/python/example_mpc.py), in the same layout as RoboPlan's `roboplan_examples`.
@@ -38,6 +39,16 @@ trajectory = mpc.solve(state)  # JointTrajectory over the horizon, starting at t
 
 The same API is available in C++ (`roboplan::MPC`, `roboplan::MPCOptions`).
 
+Environment constraints keep the joints and the tool of the arm (the frames T2 ... T(n+1)) within bounds in the world frame, e.g. above a table:
+
+```python
+options = MPCOptions(group_name="arm", tip_frame="tool0",
+                     environment_min=[-inf, -inf, 0.0],   # z_min; ±inf: not constrained
+                     d_sec=0.06)                           # safety distance [m]
+```
+
+The transformations T1 ... T(n+1) come from `RobotTransformation` (C++), the forward kinematics of the Pinocchio model on CasADi symbols, in place of DH parameters.
+
 ## Roadmap
 
 ### Done
@@ -48,6 +59,8 @@ The same API is available in C++ (`roboplan::MPC`, `roboplan::MPCOptions`).
 - [x] Robust solves: unbounded initial state, and a cold-start retry when a warm-started solve fails.
 - [x] Cartesian targets through OInK (once per target), and a browser example on the UR5, Franka FR3, dual Franka FR3, and SO-101.
 - [x] C++ and Python tests.
+- [x] `RobotTransformation`: the transformations T1 ... T(n+1) of the robot from the Pinocchio model (URDF), on CasADi symbols.
+- [x] Environment constraints: the joints and the tool stay within bounds in the world frame (e.g. a table), shown in the example with `--z-min`.
 
 ### Next
 

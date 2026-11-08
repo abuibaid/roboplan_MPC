@@ -26,6 +26,7 @@ pytest = "*"
 numpy = "*"
 matplotlib = "*"
 viser = "*"
+pycollada = "*"  # COLLADA (.dae) meshes, e.g. of the UR5
 tyro = "*"
 xacro = "*"
 

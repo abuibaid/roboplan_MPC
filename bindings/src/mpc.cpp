@@ -17,10 +17,13 @@ void initMpc(nanobind::module_& m) {
   nanobind::class_<MPCOptions>(m, "MPCOptions", "Options struct for the MPC.")
       .def(nanobind::init<const std::string&, double, size_t, const Eigen::VectorXd&,
                           const Eigen::VectorXd&, const Eigen::VectorXd&, const Eigen::VectorXd&,
-                          const std::string&, bool>(),
+                          const std::string&, bool, const std::string&, const Eigen::Vector3d&,
+                          const Eigen::Vector3d&, double>(),
            "group_name"_a = "", "Ts"_a = 0.1, "N"_a = 15, "Q"_a = Eigen::VectorXd(),
            "Qf"_a = Eigen::VectorXd(), "R"_a = Eigen::VectorXd(), "Rd"_a = Eigen::VectorXd(),
-           "solver"_a = "sqpmethod", "jit"_a = false)
+           "solver"_a = "sqpmethod", "jit"_a = false, "tip_frame"_a = "",
+           "environment_min"_a = Eigen::Vector3d::Constant(-casadi::inf),
+           "environment_max"_a = Eigen::Vector3d::Constant(casadi::inf), "d_sec"_a = 0.015)
       .def_rw("group_name", &MPCOptions::group_name,
               "The joint group name to be used by the controller.")
       .def_rw("Ts", &MPCOptions::Ts, "The time step of the prediction model, in seconds.")
@@ -40,7 +43,20 @@ void initMpc(nanobind::module_& m) {
       .def_rw("jit", &MPCOptions::jit,
               "If true, compiles the problem functions just in time. Requires a C compiler at "
               "runtime, and takes seconds to minutes when constructing; most of the solve time "
-              "is spent in IPOPT itself, so the speedup is small.");
+              "is spent in IPOPT itself, so the speedup is small.")
+      .def_rw("tip_frame", &MPCOptions::tip_frame,
+              "The tool frame, the end of the chain T1 ... T(n+1), e.g. 'tool0'. Required for "
+              "the environment constraints.")
+      .def_rw("environment_min", &MPCOptions::environment_min,
+              "Environment constraints: the lower bounds [x; y; z] in the world frame on the "
+              "positions of the frames T2 ... T(n+1), e.g. environment_min[2] for a table. "
+              "Infinite bounds (the default) are not constrained.")
+      .def_rw("environment_max", &MPCOptions::environment_max,
+              "Environment constraints: the upper bounds [x; y; z] in the world frame on the "
+              "positions of the frames T2 ... T(n+1). Infinite bounds (the default) are not "
+              "constrained.")
+      .def_rw("d_sec", &MPCOptions::d_sec,
+              "The safety distance to the environment bounds, in meters.");
 
   nanobind::class_<MPC>(m, "MPC", "Joint-space model predictive control (MPC) for motion control.")
       .def(nanobind::init<const std::shared_ptr<Scene>, const MPCOptions&>(), "scene"_a,

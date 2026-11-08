@@ -2,13 +2,14 @@ from typing import Annotated
 
 import numpy
 from numpy.typing import NDArray
+
 import roboplan.core._core_ext
 
 
 class MPCOptions:
     """Options struct for the MPC."""
 
-    def __init__(self, group_name: str = '', Ts: float = 0.1, N: int = 15, Q: Annotated[NDArray[numpy.float64], dict(shape=(None,), order='C')] = ..., Qf: Annotated[NDArray[numpy.float64], dict(shape=(None,), order='C')] = ..., R: Annotated[NDArray[numpy.float64], dict(shape=(None,), order='C')] = ..., Rd: Annotated[NDArray[numpy.float64], dict(shape=(None,), order='C')] = ..., solver: str = 'sqpmethod', jit: bool = False) -> None: ...
+    def __init__(self, group_name: str = '', Ts: float = 0.1, N: int = 15, Q: Annotated[NDArray[numpy.float64], dict(shape=(None,), order='C')] = ..., Qf: Annotated[NDArray[numpy.float64], dict(shape=(None,), order='C')] = ..., R: Annotated[NDArray[numpy.float64], dict(shape=(None,), order='C')] = ..., Rd: Annotated[NDArray[numpy.float64], dict(shape=(None,), order='C')] = ..., solver: str = 'sqpmethod', jit: bool = False, tip_frame: str = '', environment_min: Annotated[NDArray[numpy.float64], dict(shape=(3), order='C')] = ..., environment_max: Annotated[NDArray[numpy.float64], dict(shape=(3), order='C')] = ..., d_sec: float = 0.015) -> None: ...
 
     @property
     def group_name(self) -> str:
@@ -82,6 +83,40 @@ class MPCOptions:
 
     @jit.setter
     def jit(self, arg: bool, /) -> None: ...
+
+    @property
+    def tip_frame(self) -> str:
+        """
+        The tool frame, the end of the chain T1 ... T(n+1), e.g. 'tool0'. Required for the environment constraints.
+        """
+
+    @tip_frame.setter
+    def tip_frame(self, arg: str, /) -> None: ...
+
+    @property
+    def environment_min(self) -> Annotated[NDArray[numpy.float64], dict(shape=(3), order='C')]:
+        """
+        Environment constraints: the lower bounds [x; y; z] in the world frame on the positions of the frames T2 ... T(n+1), e.g. environment_min[2] for a table. Infinite bounds (the default) are not constrained.
+        """
+
+    @environment_min.setter
+    def environment_min(self, arg: Annotated[NDArray[numpy.float64], dict(shape=(3), order='C')], /) -> None: ...
+
+    @property
+    def environment_max(self) -> Annotated[NDArray[numpy.float64], dict(shape=(3), order='C')]:
+        """
+        Environment constraints: the upper bounds [x; y; z] in the world frame on the positions of the frames T2 ... T(n+1). Infinite bounds (the default) are not constrained.
+        """
+
+    @environment_max.setter
+    def environment_max(self, arg: Annotated[NDArray[numpy.float64], dict(shape=(3), order='C')], /) -> None: ...
+
+    @property
+    def d_sec(self) -> float:
+        """The safety distance to the environment bounds, in meters."""
+
+    @d_sec.setter
+    def d_sec(self, arg: float, /) -> None: ...
 
 class MPC:
     """Joint-space model predictive control (MPC) for motion control."""

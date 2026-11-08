@@ -42,6 +42,8 @@ MODELS = {
         default_joint_group="arm",
         ee_names=["tool0"],
         base_link="base",
+        # The model has a simple gripper on tool0; show the arm only.
+        hidden_frames=["tool0"],
     ),
     "franka": SimpleNamespace(
         urdf_path=MODELS_DIR / "franka_robot_model" / "fr3.urdf",
@@ -76,6 +78,7 @@ def main(
     tolerance: float = 1e-3,
     host: str = "localhost",
     port: str = "8000",
+    z_min: float | None = None,
 ):
     """
     Move a robot to random end-effector poses with the MPC and animate the trajectory.
@@ -83,7 +86,8 @@ def main(
     OInK converts each Cartesian target into a joint goal, once per target. The robot then
     follows the trajectory predicted by the MPC, as a joint trajectory controller would: at each
     control cycle, it is at the first predicted state. The MPC respects the joint position,
-    velocity, acceleration, and torque limits, but does not avoid collisions.
+    velocity, acceleration, and torque limits, and optionally keeps the joints and the tool of the
+    arm above a floor (environment constraints), but does not avoid other collisions.
 
     Parameters:
         model: The name of the model to use (ur5, franka, dual, or so101; the MPC does not
@@ -92,6 +96,9 @@ def main(
         tolerance: The joint position (rad) and velocity (rad/s) error at which the goal is reached.
         host: The host for the ViserVisualizer.
         port: The port for the ViserVisualizer.
+        z_min: The height (in meters) of a floor that the joints and the tool of the arm stay
+            above, e.g. 0.0. The targets are then drawn near the floor. No floor if not given.
+            One arm only (not dual).
     """
     model_data = MODELS.get(model)
     if model_data is None:
@@ -127,11 +134,58 @@ def main(
         model, urdf_xml, pin.GeometryType.VISUAL, package_dirs=package_paths
     )
 
+    for frame in getattr(model_data, "hidden_frames", []):
+        for geom_model in (collision_model, visual_model):
+            names = [
+                geom.name
+                for geom in geom_model.geometryObjects
+                if model.frames[geom.parentFrame].name == frame
+            ]
+            for name in names:
+                geom_model.removeGeometryObject(name)
+
     viz = ViserVisualizer(model, collision_model, visual_model)
     viz.initViewer(open=True, loadModel=True, host=host, port=port)
 
     # Set up the MPC, and OInK to convert Cartesian targets into joint goals.
-    mpc = MPC(scene, MPCOptions(group_name=group_name))
+    options = MPCOptions(group_name=group_name)
+    # Environment constraints: the frames T2 ... T(n+1) stay above the floor.
+    joint_names = scene.getJointGroupInfo(group_name).joint_names
+    constrained_frames = joint_names[1:] + ee_names[:1]
+    if z_min is not None:
+        if len(ee_names) > 1:
+            print("The floor (z_min) is supported for one arm only.")
+            sys.exit(1)
+        options.tip_frame = ee_names[0]
+        options.environment_min = np.array([-np.inf, -np.inf, z_min])
+        # The constraints are on the joint centres, so keep about a link radius to the floor.
+        options.d_sec = 0.06
+        viz.viewer.scene.add_box(
+            "/environment/floor",
+            color=(150, 150, 150),
+            dimensions=(2.0, 2.0, 0.005),
+            opacity=0.5,
+            position=(0.0, 0.0, z_min - 0.0025),
+        )
+    mpc = MPC(scene, options)
+
+    def above_floor(q_full):
+        """Whether the constrained frames are above the floor, by the safety distance."""
+        return z_min is None or all(
+            scene.forwardKinematics(q_full, frame)[2, 3] >= z_min + options.d_sec
+            for frame in constrained_frames
+        )
+
+    def random_target():
+        """A random configuration; with a floor, one with the tool less than 0.1 m above it."""
+        while True:
+            q = scene.randomCollisionFreePositions()
+            if z_min is None or (
+                above_floor(q)
+                and scene.forwardKinematics(q, ee_names[0])[2, 3] < z_min + 0.1
+            ):
+                return q
+
     dt = mpc.getTimeStep()
     anim_dt = 0.01
 
@@ -159,6 +213,8 @@ def main(
     animate = False
 
     q_full = scene.randomCollisionFreePositions()
+    while not above_floor(q_full):
+        q_full = scene.randomCollisionFreePositions()
     scene.setJointPositions(q_full)
     viz.display(q_full)
     time.sleep(0.1)
@@ -177,11 +233,11 @@ def main(
         state.velocities = np.zeros(len(q_indices))
 
         # Random reachable end-effector poses, converted into a joint goal by OInK. Draw
-        # other targets if the IK fails.
+        # other targets if the IK fails, or if the goal is below the floor.
         print("\nSolving IK for random target poses...")
         q_goal_full = None
-        for _ in range(10):
-            q_target = scene.randomCollisionFreePositions()
+        for _ in range(20):
+            q_target = random_target()
             for frame_task, ee_name in zip(frame_tasks, ee_names):
                 frame_task.setTargetFrameTransform(
                     scene.forwardKinematics(q_target, ee_name, base_frame)
@@ -193,9 +249,12 @@ def main(
                     constraints=[position_limit],
                     options=ik_options,
                 )
-                break
             except RuntimeError as e:
                 print(f"No IK solution, drawing other targets: {e}")
+                continue
+            if above_floor(q_goal_full):
+                break
+            q_goal_full = None
         if q_goal_full is None:
             plan_button.disabled = False
             return
