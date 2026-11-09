@@ -64,10 +64,11 @@ The transformations T1 ... T(n+1) come from `RobotTransformation` (C++), the for
 
 ### Next
 
-1. **Collision avoidance.** Self-collision and static obstacles as distance constraints, with the robot links modelled as capsules (line segments), following [KoKoBot](https://github.com/ngafur/MPC_MultiRobot_Motion_Planning). The geometry comes from the RoboPlan `Scene`.
-2. **Moving obstacles.** Predicted obstacle motion over the horizon as time-varying constraints, set at every cycle.
-3. **Multiple robots.** Distributed MPC for robots sharing a workspace, where each robot plans with its neighbours' predicted trajectories, as in KoKoBot.
-4. **ROS 2 integration.** A node that sends the predicted trajectory to a `joint_trajectory_controller`, tested in simulation and on a real UR5e.
+1. **Composable costs and constraints.** Build the optimal control problem from terms added with `addCost`, `addTerminalCost`, and `addConstraint` (as in RoboPlan's [#287](https://github.com/open-planning/roboplan/pull/287)) instead of a fixed problem.
+2. **Collision avoidance.** Self-collision and static obstacles as distance constraints, with the robot links modelled as capsules (line segments), following [KoKoBot](https://github.com/ngafur/MPC_MultiRobot_Motion_Planning). The geometry comes from the RoboPlan `Scene`.
+3. **Moving obstacles.** Predicted obstacle motion over the horizon as time-varying constraints, set at every cycle.
+4. **Multiple robots.** Distributed MPC for robots sharing a workspace, where each robot plans with its neighbours' predicted trajectories, as in KoKoBot.
+5. **ROS 2 integration.** A node that sends the predicted trajectory to a `joint_trajectory_controller`, tested in simulation and on a real UR5e.
 
 ## References
 
